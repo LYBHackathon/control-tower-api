@@ -403,6 +403,12 @@ Every change to a shipment arrives as an event through one function, `ingestEven
 
 `occurred_at` is optional. When absent, the server stamps the event with its clock. In demo mode the web app always omits it, because the phone's real clock is not the simulated clock. A production client would send device time, which is where the out-of-order rules matter; the simulator and tests exercise them.
 
+Implementation notes (added with the API build):
+
+- In demo mode the server **ignores** any `occurred_at` sent over HTTP and stamps the simulated clock time. The in-process simulator supplies its own `occurred_at`.
+- Posting events: a customer always gets `403`. A driver gets `403` for any shipment not assigned to them, whether or not the id exists, so the answer reveals nothing (this reconciles section 5.4 with test T6). A coordinator gets `404` for an unknown id. Reading a shipment out of scope is `404` for every role.
+- A `DISRUPTION_REPORTED` with a `disruption_id` already stored, or a `DISRUPTION_CLEARED` for one already cleared, is `200 DUPLICATE`. Clearing an unknown disruption is `404`.
+
 ### 5.7 Sample payloads
 
 All values are fictional and match the worked example in section 6.6.
@@ -558,6 +564,8 @@ Response `201`:
 
 Decision errors: `409 OPTIONS_STALE` (option set expired, or a disruption or route change occurred since it was generated; the client refetches options), `409 OPTION_INFEASIBLE`, `409 ALERT_ALREADY_DECIDED`. A repeated `decision_id` returns the original `200` response.
 
+Added with the API build: the option set also carries `recommendation_reason` (string), the sentence the coordinator sees beside the recommended option, for example "No available action brings this shipment back on time. Recommended: agree a new delivery time and inform the customer now."
+
 ### 5.8 Stream contract
 
 `GET /api/v1/stream` with the bearer token in the `Authorization` header (the web app reads the stream with `fetch`, since the browser `EventSource` API cannot send headers).
@@ -570,6 +578,27 @@ data: {"entity":"shipment","id":"SHP-1001","version":43,"kinds":["eta","alert"]}
 ```
 
 `entity` is `shipment`, `notification`, `dashboard` or `demo`. On a hint the client refetches the matching REST resource. On connect or reconnect the client refetches everything it displays. The server sends a hint only to users who are allowed to see that entity. A comment line is sent every 15 seconds to keep the connection open.
+
+### 5.9 Response shapes and error codes (added with the API build)
+
+The exact response bodies are the Zod schemas in `src/http/schemas.ts`, served as `/openapi.json`; the web app generates its types from that file. Summary of what section 5.5 left open:
+
+| Endpoint | Body |
+|---|---|
+| `GET /shipments` | Array of `{id, order_id, customer_id, customer_name, transporter_name, vehicle_reg, status, active_route_id, promised_by, current_eta: {id, eta, risk_score, risk_level, confidence, slack_min, headline} \| null, open_alert_id, version}` |
+| `GET /shipments/:id` | `{id, status, version, order{…, original_promised_by, agreed_delivery_by}, transporter{id, name}, vehicle_reg, driver{id, name, phone} \| null, quantity_t, gross_t, planned_route_id, active_route_id, alternative_route_ids, planned_departure, milestones[{status, at}], last_position{lat, lng, progress_km, occurred_at} \| null, current_eta (5.7.2) \| null, open_alert \| null, active_disruptions[]}`. `driver` is always `null` for customers. Customers see `open_alert` only at `HIGH` |
+| `GET /shipments/:id/events` | Array of stored events, oldest first |
+| `GET /shipments/:id/eta-history` | Array of snapshots (5.7.2), newest first |
+| `GET /routes/:id` | `{id, name, origin, destination, total_km, geometry (GeoJSON LineString) \| null, restrictions{max_gross_t, closed}, segments[], alternatives[{alt_route_id, exit_km}]}` |
+| `GET /alerts` | Array of `{id, shipment_id, level, status, title, opened_at, first_snapshot_id, resolved_at, current_risk_score, current_risk_level, current_headline}`, highest current risk first |
+| `GET /decisions`, `GET /decisions/:id` | The decision response (5.7.3) plus `option_set_id`, `option_id`, `note` and `options` (the full option set at decision time) |
+| `GET /notifications` | Array of `{id, shipment_id, kind, title, body, created_at, read_at}`, newest first |
+| Demo endpoints | `{clock{now, speed, paused, mode}, scenario{id, status, next_pause_at}}` |
+| Dashboard and metrics | See section 10.3 and `/openapi.json` |
+
+Factor codes in a snapshot: `BASE_TRAVEL`, `DWELL`, `CONGESTION`, a disruption category, plus `POSITION_STALE` (zero minutes, "No position for N min"), `SCHEDULE_FALLBACK` ("Schedule-based estimate") and `DEPARTURE_WAIT` (minutes until the planned departure for a shipment not yet departed, so that `eta = computed_at + sum(factors)` always holds).
+
+Error codes besides those already named: `401 UNAUTHORIZED` (missing or invalid token), `401 INVALID_CREDENTIALS`, `403 FORBIDDEN`, `404 NOT_FOUND`, `422 VALIDATION_FAILED`, `429 RATE_LIMITED` (login), `500 INTERNAL_ERROR`.
 
 ---
 
@@ -618,6 +647,13 @@ The engine is a pure function `computeEta(state, now) → snapshot`. Durations a
 6. **Not yet departed** (`PLANNED`, `DISPATCHED`): `now` is replaced by `max(now, planned_departure)`, and step 3 is skipped.
 7. **Arrived or delivered:** no new snapshots; the last one stands.
 
+Clarifications added with the API build, so that step C of section 6.6 follows from the rules rather than from a special case:
+
+- **Pace after a reroute.** Congestion is local to the road it was observed on. When the active route is an alternative whose first `exit_km` km are the original road, the pace factor is applied only from the truck's position up to `exit_km` (and never beyond the next 50 km). In step C this gives 6 km × (1.5 − 1) = 3 min, plus base travel 6 + 120 = 126 min, total 129 min. Without this rule the 1.5 slowdown would be projected onto 44 km of bypass and the reroute would read 12:05, not 11:39.
+- **Which disruptions count.** A disruption's `at_km` is measured on the route that was active when it was reported. It counts if it is at or ahead of the truck and lies on the road the truck will drive: on the active route, or on the original route at or before the reroute's `exit_km`. A disruption with no `at_km` is "at the truck" and always counts. A disruption on the truck's current segment, or at the truck, suppresses the pace factor.
+- **Observed pace window.** Positions with `occurred_at` in `[now − 15 min, now]`; slowdown = minutes elapsed between the first and last of them ÷ minutes the same stretch takes at baseline speeds (equivalent to baseline speed ÷ observed speed, and correct when the stretch crosses a segment boundary). A truck that has not moved gets the maximum, 2.0.
+- **Stale position.** The ETA is held only on the 5-minute clock tick: the minutes elapsed since the previous snapshot are taken off its factors, base travel first, so the arrival time does not move. A new event (for example a disruption report) during a gap recomputes from the last known position, still with confidence `LOW` and the widened margin.
+
 Default delay by category (**fictional assumptions**, editable in `fixtures/config.json`):
 
 | Category | Default minutes |
@@ -649,6 +685,8 @@ Alert rules:
 | Level becomes `HIGH` | Open or escalate alert; notify coordinators **and** the customer's users |
 | Decision approved | Alert status `DECIDED`; notify customer and driver with the revised ETA and reason |
 | Level `LOW` for 10 consecutive minutes with no decision | Alert `RESOLVED`; if the customer was notified, send "back on schedule" |
+
+"Becomes" means the level rises compared with the previous snapshot. A fall from `HIGH` to `MEDIUM` (for example right after an approved reroute) opens nothing new.
 
 Why the customer is told at `HIGH` and not `MEDIUM`: a `MEDIUM` score means the shipment is close to its promise but inside the margin of error. Telling the customer at that point would produce warnings that often turn out to be nothing. The coordinator gets the earlier warning because they can act on it.
 
