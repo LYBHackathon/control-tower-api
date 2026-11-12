@@ -1021,6 +1021,8 @@ The brief requires at least one indicator with its calculation and assumptions [
 | On-time delivery | Shipments arrived at or before `original_promised_by` ÷ shipments arrived; shown with and without the coordinator's decisions | With decisions: observed in replay. Without: counterfactual |
 | Cost of lateness avoided | `delay avoided in hours × assumed cost per late hour` | **Modeled estimate** |
 
+Implementation notes (added with the API build): the dashboard groups each shipment by its **planned** route (its lane), so a rerouted truck stays in its lane's figures. Delay-cause minutes for a replay shipment are, per cause, the largest number of minutes that cause added in any of its ETA snapshots; history shipments carry their causes in `history.json`. Impact indicators are computed over replay shipments only (those with ETA snapshots); the warning lead time is reported per shipment and as the median, so with `SHP-1001` (150 min) and `SHP-1002` both alerted the median is not 150.
+
 Assumptions to state aloud:
 
 1. Every figure comes from a fictional scenario we wrote, so it shows that the mechanism works; it does not predict real performance.
