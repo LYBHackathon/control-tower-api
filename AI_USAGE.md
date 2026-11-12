@@ -5,6 +5,7 @@ The hackathon rules allow generative AI and require teams to declare where and h
 | Area | Tool | How it was used | Human check |
 |---|---|---|---|
 | `DESIGN.md`, `PHASES.md`, READMEs | Claude Code (Anthropic) | Drafted from the hackathon brief and the team lead's decisions | Draft under review by the team; each member must be able to explain it |
+| API code in `src/`, `migrations/`, tests in `test/`, stand-in fixtures in `test/fixtures-stub/`, clarifications in `DESIGN.md` 5.6, 5.7.3, 5.9, 6.3, 6.4 | Claude Code (Anthropic), coding agent | Wrote the backend (ingestion, ETA and risk engine, alerts, options, decisions, simulator, dashboard) and its tests from `DESIGN.md`; the worked example in 6.6 is the acceptance test | Pull requests need a teammate's review; the reviewer must be able to explain each file before merging. Tests T1–T13 were run, not assumed |
 
 ## Run-time AI in the product
 
