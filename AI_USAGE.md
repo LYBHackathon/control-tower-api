@@ -5,6 +5,7 @@ The hackathon rules allow generative AI and require teams to declare where and h
 | Area | Tool | How it was used | Human check |
 |---|---|---|---|
 | `DESIGN.md`, `PHASES.md`, READMEs | Claude Code (Anthropic) | Drafted from the hackathon brief and the team lead's decisions | Draft under review by the team; each member must be able to explain it |
+| `control-tower-web` (all code, tests, mock API, README, CONTRACT_GAPS.md, design tokens) | Claude Code (Anthropic, Claude Opus 5.5). Design skills loaded: `taste-skill:minimalist-skill`, `frontend-design:frontend-design`, `ecc:motion-foundations`, `dataviz` | Wrote the web app from DESIGN.md sections 5, 7, 8 and 10.5 and the team lead's brief; set the design tokens; wrote the component tests; walked the demo in a browser against the mock API | To be reviewed by Owner B through the web pull requests; each file must be explainable by the team |
 | API code in `src/`, `migrations/`, tests in `test/`, stand-in fixtures in `test/fixtures-stub/`, clarifications in `DESIGN.md` 5.6, 5.7.3, 5.9, 6.3, 6.4 | Claude Code (Anthropic), coding agent | Wrote the backend (ingestion, ETA and risk engine, alerts, options, decisions, simulator, dashboard) and its tests from `DESIGN.md`; the worked example in 6.6 is the acceptance test | Pull requests need a teammate's review; the reviewer must be able to explain each file before merging. Tests T1–T13 were run, not assumed |
 
 ## Run-time AI in the product
