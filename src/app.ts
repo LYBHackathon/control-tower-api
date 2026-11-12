@@ -17,6 +17,7 @@ import { StreamHub } from './stream/hub';
 import { registerAuthRoutes } from './auth/routes';
 import { registerShipmentRoutes } from './shipments/routes';
 import { registerAlertRoutes } from './alerts/routes';
+import { registerDecisionRoutes } from './decisions/routes';
 import { registerNotificationRoutes } from './notify/routes';
 import { registerStreamRoutes } from './stream/routes';
 import { registerDemoRoutes } from './sim/routes';
@@ -88,6 +89,7 @@ export async function buildApp(opts: BuildOptions): Promise<Built> {
   registerAuthRoutes(app, ctx, reg);
   registerShipmentRoutes(app, ctx, reg);
   registerAlertRoutes(app, ctx, reg);
+  registerDecisionRoutes(app, ctx, reg);
   registerNotificationRoutes(app, ctx, reg);
   registerStreamRoutes(app, ctx, reg);
   if (sim && simClock) registerDemoRoutes(app, ctx, reg, sim, simClock);
